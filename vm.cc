@@ -35,6 +35,11 @@ uint16_t dos21_seg = 0;
 uint16_t dos21_offset = 0;
 std::queue<char> key_queue;
 std::mutex q_lock;
+static const int dos_io_seg = 0x60;
+static const int INITTAB = 16 * 3;
+static const int DRVPARAM = 16 * 3 + 8;
+static const int DOS_IO_SIZE = 128;
+static const int dosseg = dos_io_seg + DOS_IO_SIZE/16;
 
 struct vcpu {
     char *run;
@@ -61,27 +66,52 @@ static void dump_dt(const char *tag, struct kvm_dtable *dt) {
            (int)dt->limit);
 }
 
-static void setup_vcpu(int fd, __u64 entry) {
+static void setup_vcpu(int fd, bool dos) {
     struct kvm_sregs sregs;
     struct kvm_regs regs;
     ioctl(fd, KVM_GET_REGS, &regs, NULL);
 
-    regs.rip = entry;
-    regs.rsp = 0x8000;
+    if (dos) {
+        regs.rip = 0;
+        regs.rsp = 0x8000-4;
+        regs.rdx = 1024 * 256 / 64;  // number of 64byte paragraphs of mem
+        regs.rsi = INITTAB;          // inittab
+    } else {
+        regs.rip = 0x7c00;
+        regs.rsp = 0x8000;
+    }
 
     ioctl(fd, KVM_SET_REGS, &regs, NULL);
 
     ioctl(fd, KVM_GET_SREGS, &sregs, NULL);
 
-    sregs.cs.base = 0x0;
-    sregs.cs.limit = 0xffff;
-    sregs.cs.selector = 0x0;
-    sregs.ds.base = 0;
-    sregs.ds.limit = 0xffff;
-    sregs.ds.selector = 0;
-    sregs.ss.base = 0;
-    sregs.ss.limit = 0xffff;
-    sregs.ss.selector = 0;
+    if (dos) {
+        sregs.cs.base = dosseg * 16;
+        sregs.cs.limit = 0xffff;
+        sregs.cs.selector = dosseg;
+
+        sregs.ss.base = 0;
+        sregs.ss.limit = 0xffff;
+        sregs.ss.selector = 0;
+
+        sregs.es.base = dosseg * 16;
+        sregs.es.limit = 0xffff;
+        sregs.es.selector = dosseg;
+
+        sregs.ds.base = dos_io_seg * 16;
+        sregs.ds.limit = 0xffff;
+        sregs.ds.selector = dos_io_seg;
+    } else {
+        sregs.cs.base = 0x0;
+        sregs.cs.limit = 0xffff;
+        sregs.cs.selector = 0x0;
+        sregs.ds.base = 0;
+        sregs.ds.limit = 0xffff;
+        sregs.ds.selector = 0;
+        sregs.ss.base = 0;
+        sregs.ss.limit = 0xffff;
+        sregs.ss.selector = 0;
+    }
 
     sregs.cs.db = 0;
     sregs.ss.db = 0;
@@ -168,7 +198,7 @@ static void handle_hlt(int fd, unsigned char *full_mem, int image_fd) {
     if (sregs.cs.base == 0xf0000) {
         uint32_t rip = regs.rip;
         int intr_nr = rip - 1;
-        // printf("handle intr = %x\n", intr_nr);
+        //printf("handle intr = %x\n", intr_nr);
         bool cf = 0;
         bool zf = 0;
         bool dos = false;
@@ -250,12 +280,12 @@ static void handle_hlt(int fd, unsigned char *full_mem, int image_fd) {
                             //    " "drive=%d %x\n", lba, num_sector, cyl,
                             //    sector, head, drive, buffer);
 
-                            if ((regs.rax >> 8 &0xff) == 2) {
-                                pread(image_fd, full_mem + buffer, num_sector * 512,
-                                      lba * 512);
+                            if ((regs.rax >> 8 & 0xff) == 2) {
+                                pread(image_fd, full_mem + buffer,
+                                      num_sector * 512, lba * 512);
                             } else {
-                                pwrite(image_fd, full_mem + buffer, num_sector * 512,
-                                       lba * 512);
+                                pwrite(image_fd, full_mem + buffer,
+                                       num_sector * 512, lba * 512);
                             }
                             regs.rax = num_sector;
                         }
@@ -390,9 +420,14 @@ static void handle_hlt(int fd, unsigned char *full_mem, int image_fd) {
                 break;
             }
 
+        case 0x200: {
+            puts("ret from dos");
+            exit(1);
+        }
+
             default:
-                // printf("unknown intr 0x%x, prev_ip=%04x, prev_cs=%04x%x\n",
-                // intr_nr, prev_ip, prev_cs);
+                printf("unknown intr 0x%x, prev_ip=%04x, prev_cs=%04x%x\n",
+                       intr_nr, prev_ip, prev_cs);
                 //  dump_regs(fd);
                 cf = 1;
                 break;
@@ -417,6 +452,49 @@ static void handle_hlt(int fd, unsigned char *full_mem, int image_fd) {
         ioctl(fd, KVM_SET_REGS, &regs, NULL);
 
         return;
+    } else if (sregs.cs.base == 0x600) {
+        uint16_t prev_ip = *(uint16_t *)(full_mem + (sregs.ss.base + regs.rsp));
+        uint16_t prev_cs =
+            *(uint16_t *)(full_mem + (sregs.ss.base + regs.rsp + 2));
+
+        bool zf = 0;
+        bool cf = 0;
+
+        /* dos dirver */
+        switch ((regs.rip - 1) / 3) {
+            case 1:
+                // console inptus status check
+                zf = 1;
+                break;
+            case 2:
+                puts("get console char");
+                break;
+            case 3:
+                // puts("print");
+                putchar(regs.rax & 0xff);
+                break;
+            default:
+                printf("unknown dos driver call %d\n", regs.rip / 3);
+                dump_regs(fd);
+                exit(1);
+                break;
+        }
+
+        sregs.cs.base = prev_cs * 16;
+        sregs.cs.selector = prev_cs;
+        regs.rflags &= ~((1 << 6) | (1 << 0));  // clear zf, cf
+        if (zf) {
+            regs.rflags |= (1 << 6);
+        }
+        if (cf) {
+            regs.rflags |= (1 << 0);
+        }
+
+        regs.rip = prev_ip;
+        regs.rsp += 4;
+
+        ioctl(fd, KVM_SET_SREGS, &sregs, NULL);
+        ioctl(fd, KVM_SET_REGS, &regs, NULL);
     } else {
         dump_ivt(full_mem);
 
@@ -457,10 +535,10 @@ static void disasm(int fd, unsigned char *full_mem) {
         fwrite(&full_mem[regs.rip + sregs.cs.base], 1, 16, fp);
         fclose(fp);
 
-        // int r = system("ndisasm out.bin|head -n2");
-        // if (r != 0) {
-        //     exit(1);
-        // }
+        int r = system("ndisasm out.bin|head -n2");
+        if (r != 0) {
+            exit(1);
+        }
     }
     fflush(stdout);
 }
@@ -485,7 +563,7 @@ int main(int argc, char **argv) {
     //     ((unsigned int *)full_mem)[i] = i;
     // }
     memset(full_mem, 0xf4, 1024 * 1024);
-    memset(full_mem + 0x400, 0x88, 256);  // bda
+    // memset(full_mem + 0x400, 0x88, 256);  // bda
     int num_int = 256;
 
     for (size_t intr = 0; intr < num_int; intr++) {
@@ -503,6 +581,61 @@ int main(int argc, char **argv) {
         return 1;
     }
     read(image_fd, full_mem + 0x7c00, 64 * 1024);
+    bool has_dos = false;
+
+    {
+        int dos = open("dos/jwasm/STDDOS.COM", O_RDONLY);
+        if (dos != -1) {
+            read(dos, full_mem + dosseg * 16, 64 * 1024);
+            close(dos);
+            has_dos = true;
+
+            *((uint16_t*)&full_mem[0x8000-4]) = 0x100*2; // ret from dos init. rip
+            *((uint16_t*)&full_mem[0x8000-2]) = 0xf000; // ret from dos init. cs
+
+            full_mem[dos_io_seg * 16 + INITTAB] = 1;      // number of drive
+            full_mem[dos_io_seg * 16 + INITTAB + 1] = 0;  // disk id
+            full_mem[dos_io_seg * 16 + INITTAB + 2] =
+                DRVPARAM & 0xff;  // disk param
+            full_mem[dos_io_seg * 16 + INITTAB + 3] =
+                DRVPARAM >> 8;  // disk param
+            full_mem[dos_io_seg * 16 + INITTAB + 4] =
+                (DRVPARAM+10) & 0xff;  // disk param
+            full_mem[dos_io_seg * 16 + INITTAB + 5] =
+                (DRVPARAM+10) >>8;  // disk param
+
+            full_mem[dos_io_seg * 16 + DRVPARAM + 0] =
+                512 & 0xff;  // num of sector lo
+            full_mem[dos_io_seg * 16 + DRVPARAM + 1] =
+                512 >> 8;  // num of sector high
+
+            full_mem[dos_io_seg * 16 + DRVPARAM + 2] = 1;           // ?
+            full_mem[dos_io_seg * 16 + DRVPARAM + 3] = 1;           // lo of ?
+            full_mem[dos_io_seg * 16 + DRVPARAM + 4] = 0;           // high of ?
+            full_mem[dos_io_seg * 16 + DRVPARAM + 5] = 1;           // ?
+            full_mem[dos_io_seg * 16 + DRVPARAM + 6] = 192;         // lo of ?
+            full_mem[dos_io_seg * 16 + DRVPARAM + 7] = 0;           // high of ?
+            full_mem[dos_io_seg * 16 + DRVPARAM + 8] = 300 & 0xff;  // ?
+            full_mem[dos_io_seg * 16 + DRVPARAM + 9] = 300 >> 8;    // high of ?
+
+            full_mem[dos_io_seg * 16 + 10 + DRVPARAM + 0] =
+                512 & 0xff;  // num of sector lo
+            full_mem[dos_io_seg * 16 + 10 + DRVPARAM + 1] =
+                512 >> 8;  // num of sector high
+
+            full_mem[dos_io_seg * 16 + 10 + DRVPARAM + 2] = 1;    // ?
+            full_mem[dos_io_seg * 16 + 10 + DRVPARAM + 3] = 1;    // lo of ?
+            full_mem[dos_io_seg * 16 + 10 + DRVPARAM + 4] = 0;    // high of ?
+            full_mem[dos_io_seg * 16 + 10 + DRVPARAM + 5] = 1;    // ?
+            full_mem[dos_io_seg * 16 + 10 + DRVPARAM + 6] = 192;  // lo of ?
+            full_mem[dos_io_seg * 16 + 10 + DRVPARAM + 7] = 0;    // high of ?
+            full_mem[dos_io_seg * 16 + 10 + DRVPARAM + 8] = 600 & 0xff;  // ?
+            full_mem[dos_io_seg * 16 + 10 + DRVPARAM + 9] =
+                600 >> 8;  // high of ?
+
+            debug = 1;
+        }
+    }
 
     capability_test(kvm_fd, KVM_CAP_USER_MEMORY, "KVM_CAP_USER_MEMORY");
     int nr_memslots =
@@ -543,7 +676,7 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    setup_vcpu(vcpu_fd, 0x7c00);
+    setup_vcpu(vcpu_fd, has_dos);
     // signal(SIGINT, sigint);
 
     bool done = false;
