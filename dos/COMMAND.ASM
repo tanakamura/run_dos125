@@ -18,10 +18,10 @@
 FALSE   EQU     0
 TRUE    EQU     NOT FALSE
 
-IBMVER  EQU     FALSE   ;Switch to build IBM version of Command
-MSVER   EQU     TRUE    ;Switch to build MS-DOS version of Command
+IBMVER  EQU     TRUE    ;Switch to build IBM version of Command
+MSVER   EQU     FALSE   ;Switch to build MS-DOS version of Command
 
-HIGHMEM EQU     TRUE    ;Run resident part above transient (high memory)
+HIGHMEM EQU     FALSE   ;Run resident part above transient (high memory)
 
 LINPERPAG       EQU     23
 NORMPERLIN      EQU     1
