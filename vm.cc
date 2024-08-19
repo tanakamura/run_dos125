@@ -548,6 +548,30 @@ static void handle_hlt(int fd, unsigned char *full_mem, int image_fd) {
                 // debug = 1;
                 break;
 
+            case DOSIO_WRITE:  // disk read
+                /*
+                 * AL = Disk I/O driver number
+                 * BX = Disk transfer address in DS
+                 * CX = Number of sectors to transfer
+                 * DX = Logical record number of transfer
+                 */
+
+                {
+                    auto addr = &full_mem[sregs.ds.base + regs.rbx];
+                    pwrite(image_fd, addr, regs.rcx * 512, regs.rdx * 512);
+                    if (0) {
+                        printf(
+                               "disk read addr=0x%08x, sector=0x%08x(byte=0x%08x), "
+                               "count=%x\n",
+                               (int)(uintptr_t)(sregs.ds.base + regs.rbx), regs.rdx,
+                               regs.rdx * 512, regs.rcx * 512);
+                    }
+                }
+                regs.rax = 0;
+                cf = 0;
+                // debug = 1;
+                break;
+
             case DOSIO_DSKCHG:
                 // dump_regs(fd);
                 regs.rax = 0;
