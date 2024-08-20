@@ -1,3 +1,5 @@
+vm: floppy.o cpu.o dump.o disasm.o vm_vm.o dos.o vm_bios.o
+
 ASFLAGS=-32
 CFLAGS=-m16 -fno-pic -fno-builtin -Os -ffreestanding
 
