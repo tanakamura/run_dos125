@@ -1,4 +1,5 @@
 #include "dosdriver.h"
+#include "dos.hpp"
 #include "vm.hpp"
 
 void handle_dos_driver_call(VM *vm, const ExitReason *r) {
@@ -132,16 +133,6 @@ void install_dos_driver(VM *vm) {
     full_mem[dos_io_seg * 16 + drv_init_tab + 1] = 0;  // disk id
     *(uint16_t *)&full_mem[dos_io_seg * 16 + drv_init_tab + 2] = drv_param;
 
-    // size of sector
-    *(uint16_t *)&full_mem[dos_io_seg * 16 + drv_param + 0] = 512;
-    // cluster size (sector per cluster)
-    full_mem[dos_io_seg * 16 + drv_param + 2] = 2;
-    // reserved sectors (mbr)
-    *(uint16_t *)&full_mem[dos_io_seg * 16 + drv_param + 3] = 1;
-    // fat count
-    full_mem[dos_io_seg * 16 + drv_param + 5] = 2;
-    // num of root dir entry
-    *(uint16_t *)&full_mem[dos_io_seg * 16 + drv_param + 6] = 112;
-    // num total sector
-    *(uint16_t *)&full_mem[dos_io_seg * 16 + drv_param + 8] = 640;
+    auto bpb = (struct dos_bpb*)&full_mem[dos_io_seg * 16 + drv_param + 0];
+    *bpb = vm->floppy->bpb;
 }

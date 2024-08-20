@@ -2,7 +2,7 @@
 #include "vm.hpp"
 
 void setup_vmbios(VM *vm) {
-    int num_int = 256;
+    size_t num_int = 256;
     auto full_mem = vm->full_mem;
 
     for (size_t intr = 0; intr < num_int; intr++) {
@@ -29,7 +29,7 @@ void handle_10h(VM *vm) {
             vm->inthandler_set_cf();
             break;
         default:
-            printf("video intr %x\n", (regs.rax) >> 8);
+            printf("video intr %x\n", (int)(regs.rax) >> 8);
             break;
     }
 }
@@ -168,11 +168,8 @@ void handle_16h(VM *vm) {
 
 void handle_bios_call(VM *vm, const ExitReason *r) {
     auto &regs = vm->cpu->regs;
-    auto &sregs = vm->cpu->sregs;
-    auto full_mem = vm->full_mem;
-
-    uint32_t rip = regs.rip;
-    int intr_nr = rip - 1;
+    //auto &sregs = vm->cpu->sregs;
+    //auto full_mem = vm->full_mem;
 
     vm->inthandler_clear_cf();
 

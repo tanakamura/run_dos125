@@ -1,8 +1,10 @@
 #include "floppy.hpp"
 
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 Floppy::Floppy(const std::string &path) {
     struct stat st_buf;
@@ -32,4 +34,37 @@ Floppy::Floppy(const std::string &path) {
         perror(path.c_str());
         exit(1);
     }
-};
+
+    this->byte_size = st_buf.st_size;
+    this->mapped_image = mmap(0, this->byte_size, PROT_READ|PROT_WRITE, MAP_SHARED, this->image_fd, 0);
+    if (this->mapped_image == MAP_FAILED) {
+        perror("mmap floppy image");
+        exit(1);
+    }
+
+    auto bytes = (char*)this->mapped_image;
+    auto bpb = (dos_bpb*)(bytes + 11);
+
+    if (bpb->bytes_per_sector == 512) {
+        this->bpb = *bpb;
+    } else {
+        /* original dos 1.25 disk does not have bpb */
+        this->bpb.bytes_per_sector = 512;
+        this->bpb.sectors_per_cluster = 2;
+        this->bpb.reserved_sectors = 1;
+        this->bpb.number_of_fat = 2;
+        this->bpb.num_root_entries = 112;
+        this->bpb.total_sectors = 640;
+    }
+}
+
+Floppy::~Floppy() {
+    close(this->image_fd);
+    munmap(this->mapped_image, this->byte_size);
+}
+
+bool Floppy::read(void *buf, size_t sz, const std::string &path) {
+    size_t root_dir = bpb.bytes_per_sector * (bpb.reserved_sectors + bpb.number_of_fat);
+    printf("%x\n", (int)root_dir);
+    return true;
+}
