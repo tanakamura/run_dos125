@@ -1,10 +1,10 @@
 #include "vm.hpp"
 
-void CPU::setup(const AddrConfig &config, bool dos) {
+void CPU::setup(const AddrConfig &config, RUN_MODE mode) {
     struct kvm_sregs &sregs = this->sregs;
     struct kvm_regs &regs = this->regs;
 
-    if (dos) {
+    if (mode == RUN_MODE::DOS) {
         regs.rip = 0;
         regs.rsp = 0x8000 - 4;
         regs.rdx = 1024 * 256 / 64;      // number of 64byte paragraphs of mem
@@ -14,7 +14,7 @@ void CPU::setup(const AddrConfig &config, bool dos) {
         regs.rsp = 0x8000;
     }
 
-    if (dos) {
+    if (mode == RUN_MODE::DOS) {
         /* start from dos_seg:0000 */
 
         set_seg(sregs.cs, config.dos_seg);

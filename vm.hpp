@@ -35,6 +35,11 @@ struct ExitReason {
     int bios_nr;
     int dos_driver_call;
 };
+enum class RUN_MODE {
+    DOS,                        // install dos kernel & start dos
+    MBR,                        // 0000:7c00
+    NATIVE                      // FFFFFFF0
+};
 
 struct CPU {
     int vcpu_fd;
@@ -68,7 +73,7 @@ struct CPU {
 
     ~CPU() { close(vcpu_fd); }
 
-    void setup(const AddrConfig &config, bool dos);
+    void setup(const AddrConfig &config, RUN_MODE mode);
 
     ExitReason run(const AddrConfig &config, bool single_step);
 };
@@ -81,6 +86,7 @@ inline void set_seg(struct kvm_segment &sreg, uintptr_t sel_val) {
     sreg.l = 0;
 }
 
+
 struct VM {
     int kvm_fd;
     int vm_fd;
@@ -88,6 +94,8 @@ struct VM {
     std::unique_ptr<CPU> cpu;
     AddrConfig addr_config;
     std::unique_ptr<Floppy> floppy;
+
+    RUN_MODE run_mode = RUN_MODE::MBR;
 
     VM() {
         kvm_fd = open("/dev/kvm", O_RDWR);
@@ -158,4 +166,5 @@ void dump_ivt(const VM *vm);
 
 void handle_bios_call(VM *vm, const ExitReason *r);
 void handle_dos_driver_call(VM *vm, const ExitReason *r);
+void install_dos_driver(VM *vm);
 void disasm(const VM *vm);
