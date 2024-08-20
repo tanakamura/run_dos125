@@ -86,6 +86,7 @@ void handle_dos_driver_call(VM *vm, const ExitReason *r) {
             break;
 
         case DOSIO_MAPDEV:
+            regs.rax = 0;  // always use 0
             break;
 
         case DOSIO_GETTIME:

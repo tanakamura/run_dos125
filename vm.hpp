@@ -155,6 +155,7 @@ struct VM {
     void emu_reti();
     void emu_push16(uint16_t val);
     void emu_far_ret();
+    void emu_far_call(uintptr_t cs, uintptr_t ip);
 
     void set_floppy(const std::string &image_path);
 };
@@ -168,3 +169,6 @@ void handle_bios_call(VM *vm, const ExitReason *r);
 void handle_dos_driver_call(VM *vm, const ExitReason *r);
 void install_dos_driver(VM *vm);
 void disasm(const VM *vm);
+void invoke_intr(VM *vm, int intr_nr);
+void run_with_handler(VM *vm);
+ExitReason run(VM *vm, bool single_step);

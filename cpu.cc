@@ -44,36 +44,45 @@ static void handle_exit_hlt(const AddrConfig &config, CPU *cpu,
             ret->code = ExitCode::HLT_BIOS_CALL;
             ret->bios_nr = intr_nr;
         }
-    } else if (sregs.cs.base == config.dos_io_seg) {
+    } else if (sregs.cs.base == config.dos_io_seg*16) {
         ret->code = ExitCode::HLT_DOS_DRIVER;
         ret->dos_driver_call = (regs.rip - 1) / 3;
     } else {
-        fprintf(stderr, "unknown hlt %04x:%04x\n", (int)sregs.cs.base, (int)regs.rip);
+        fprintf(stderr, "unknown hlt %04x:%04x\n", (int)sregs.cs.base,
+                (int)regs.rip);
         dump_regs(cpu);
         exit(1);
     }
 }
 
-ExitReason CPU::run(const AddrConfig &config, bool single_step) {
-    restore_regs_to_vm();
+ExitReason run(VM *vm, bool single_step) {
+    const AddrConfig &config = vm->addr_config;
+    vm->cpu->restore_regs_to_vm();
 
     if (single_step) {
         struct kvm_guest_debug single_step = {};
         single_step.control = KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_SINGLESTEP;
-        ioctl(vcpu_fd, KVM_SET_GUEST_DEBUG, &single_step);
+        ioctl(vm->cpu->vcpu_fd, KVM_SET_GUEST_DEBUG, &single_step);
+        disasm(vm);
     }
-    ioctl(vcpu_fd, KVM_RUN);
+    int r= ioctl(vm->cpu->vcpu_fd, KVM_RUN, NULL);
+    if (r < 0) {
+        perror("kvm run");
+        exit(1);
+    }
 
-    load_regs_from_vm();
+    vm->cpu->load_regs_from_vm();
     ExitReason ret;
 
+    auto run_data = vm->cpu->run_data;
     switch (run_data->exit_reason) {
         case KVM_EXIT_HLT:
-            handle_exit_hlt(config, this, &ret);
+            handle_exit_hlt(config, vm->cpu.get(), &ret);
             break;
 
         case KVM_EXIT_INTERNAL_ERROR:
-            printf("exit internal error : %d [", (int)run_data->internal.suberror);
+            printf("exit internal error : %d [",
+                   (int)run_data->internal.suberror);
             exit(1);
             break;
         case KVM_EXIT_MMIO:
@@ -86,16 +95,18 @@ ExitReason CPU::run(const AddrConfig &config, bool single_step) {
             exit(1);
             break;
         case KVM_EXIT_FAIL_ENTRY:
-            printf("fail entry : reason=%llx\n",
-                   (long long)run_data->fail_entry.hardware_entry_failure_reason);
+            printf(
+                "fail entry : reason=%llx\n",
+                (long long)run_data->fail_entry.hardware_entry_failure_reason);
             exit(1);
             break;
         case KVM_EXIT_DEBUG:
             ret.code = ExitCode::SINGLE_STEP;
             break;
         case KVM_EXIT_IO:
-            printf("reference unconnected io %x %x %x\n", run_data->io.direction,
-                   run_data->io.port, run_data->io.size);
+            printf("reference unconnected io %x %x %x\n",
+                   run_data->io.direction, run_data->io.port,
+                   run_data->io.size);
             exit(1);
             break;
         default:
@@ -109,7 +120,7 @@ ExitReason CPU::run(const AddrConfig &config, bool single_step) {
 
 void run_with_handler(VM *vm) {
     while (1) {
-        auto r = vm->cpu->run(vm->addr_config, false);
+        auto r = run(vm, false);
         switch (r.code) {
             case ExitCode::HLT_BIOS_CALL:
                 handle_bios_call(vm, &r);
@@ -120,8 +131,6 @@ void run_with_handler(VM *vm) {
             case ExitCode::HLT_INVOKE_RETURN:
                 return;
             case ExitCode::SINGLE_STEP:
-                fprintf(stderr, "TODO handle single step\n");
-                exit(1);
                 break;
         }
     }
@@ -132,8 +141,8 @@ void invoke_intr(VM *vm, int intr_nr) {
     vm->emu_push16(0xf000);                          // bios cs
     vm->emu_push16(0x200);                           // ret intr
 
-    uintptr_t ip = *(uint16_t*)(vm->full_mem + intr_nr * 4 + 0);
-    uintptr_t cs = *(uint16_t*)(vm->full_mem + intr_nr * 4 + 2);
+    uintptr_t ip = *(uint16_t *)(vm->full_mem + intr_nr * 4 + 0);
+    uintptr_t cs = *(uint16_t *)(vm->full_mem + intr_nr * 4 + 2);
 
     vm->cpu->regs.rflags &= ~FLAGS_IF;
     set_seg(vm->cpu->sregs.cs, cs);

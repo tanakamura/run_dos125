@@ -20,15 +20,13 @@ void VM::emu_far_ret() {
     auto &sregs = cpu->sregs;
 
     uint16_t prev_ip = *(uint16_t *)(full_mem + (sregs.ss.base + regs.rsp));
-    uint16_t prev_cs =
-        *(uint16_t *)(full_mem + (sregs.ss.base + regs.rsp + 2));
+    uint16_t prev_cs = *(uint16_t *)(full_mem + (sregs.ss.base + regs.rsp + 2));
 
     sregs.cs.base = prev_cs * 16;
     sregs.cs.selector = prev_cs;
 
     regs.rip = prev_ip;
     regs.rsp += 4;
-
 }
 
 void VM::emu_push16(uint16_t val) {
@@ -41,6 +39,16 @@ void VM::emu_push16(uint16_t val) {
     *dest = val;
 }
 
+void VM::emu_far_call(uintptr_t cs, uintptr_t ip) {
+    emu_push16(0xf000);                      // bios cs
+    emu_push16(0x200);                       // ret intr
+
+    set_seg(cpu->sregs.cs, cs);
+    cpu->regs.rip = ip;
+
+    run_with_handler(this);
+}
+
 void VM::set_floppy(const std::string &image_path) {
-  this->floppy = std::make_unique<Floppy>(image_path);
+    this->floppy = std::make_unique<Floppy>(image_path);
 }
