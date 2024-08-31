@@ -1,6 +1,32 @@
-#include "dosdriver.h"
 #include "dos.hpp"
+
+#include <time.h>
+
+#include "dosdriver.h"
 #include "vm.hpp"
+
+namespace {
+struct datetime {
+    uint16_t days;
+    uint8_t milsec;
+    uint8_t sec;
+    uint8_t hour;
+    uint8_t min;
+};
+datetime dos_gettime() {
+    time_t now = time(NULL);
+    auto tm = localtime(&now);
+
+    datetime ret;
+
+    ret.days = tm->tm_yday;
+    ret.milsec = 0;
+    ret.sec = tm->tm_sec;
+    ret.min = tm->tm_min;
+    ret.hour = tm->tm_hour;
+    return ret;
+}
+}  // namespace
 
 void handle_dos_driver_call(VM *vm, const ExitReason *r) {
     auto &regs = vm->cpu->regs;
@@ -90,9 +116,12 @@ void handle_dos_driver_call(VM *vm, const ExitReason *r) {
             regs.rax = 0;  // always use 0
             break;
 
-        case DOSIO_GETTIME:
-            regs.rax = 0;
-            break;
+        case DOSIO_GETTIME: {
+            auto t = dos_gettime();
+            regs.rax = t.days;
+            regs.rdx = (t.sec << 8) | t.milsec;
+            regs.rcx = (t.hour << 8) | (t.min);
+        } break;
 
         default:
             printf("unknown dos driver call %02x\n", r->dos_driver_call);
@@ -112,14 +141,13 @@ void handle_dos_driver_call(VM *vm, const ExitReason *r) {
 }
 
 void install_dos_driver(VM *vm) {
-    int dos = open("dos/jwasm/STDDOS.COM", O_RDONLY);
-    if (dos < 0) {
-        perror("unable to load dos kernel(dos/jwasm/stddos.com)");
+    auto dos = vm->floppy->read("STDDOS", "COM");
+    if (!dos) {
+        perror("unable to load MSDOS.SYS");
         exit(1);
     }
     auto full_mem = vm->full_mem;
-    read(dos, full_mem + vm->addr_config.dos_seg * 16, 64 * 1024);
-    close(dos);
+    memcpy(full_mem + vm->addr_config.dos_seg * 16, dos->data(), dos->size());
     vm->run_mode = RUN_MODE::DOS;
 
     *((uint16_t *)&full_mem[0x8000 - 4]) = 0x100 * 2;  // ret from dos init. rip
@@ -133,6 +161,6 @@ void install_dos_driver(VM *vm) {
     full_mem[dos_io_seg * 16 + drv_init_tab + 1] = 0;  // disk id
     *(uint16_t *)&full_mem[dos_io_seg * 16 + drv_init_tab + 2] = drv_param;
 
-    auto bpb = (struct dos_bpb*)&full_mem[dos_io_seg * 16 + drv_param + 0];
+    auto bpb = (struct dos_bpb *)&full_mem[dos_io_seg * 16 + drv_param + 0];
     *bpb = vm->floppy->bpb;
 }

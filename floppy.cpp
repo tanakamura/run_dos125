@@ -118,7 +118,6 @@ std::optional<std::vector<uint8_t>> Floppy::read(const std::string &filename,
 {
     size_t bps = bpb.bytes_per_sector;
     size_t root_dir_offset = bps * (bpb.reserved_sectors + bpb.number_of_fat);
-    size_t root_dir_size = bpb.num_root_entries * sizeof(fat_dirent);
 
     const uint8_t *fat = this->mapped_image + bps * bpb.reserved_sectors;
     const uint8_t *root_dir = fat + bpb.number_of_fat * bps;
