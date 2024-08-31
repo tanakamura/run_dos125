@@ -1,5 +1,8 @@
 #pragma once 
 
+#include <optional>
+#include <stdint.h>
+#include <vector>
 #include <string>
 #include "dos.hpp"
 
@@ -13,10 +16,11 @@ struct Floppy {
   size_t byte_size;
 
   dos_bpb bpb;
-  void *mapped_image;
+  uint8_t *mapped_image;
 
   Floppy(const std::string &path);
   ~Floppy();
 
-  bool read(void *buf, size_t sz, const std::string &path);
+  std::optional<std::vector<uint8_t>> read(const std::string &filename,
+                                           const std::string &ext);
 };

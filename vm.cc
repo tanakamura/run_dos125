@@ -51,17 +51,14 @@ int main(int argc, char **argv) {
     /* dos init */
     vm.emu_far_call(vm.addr_config.dos_seg, 0);
 
-    FILE *command = fopen("dos/jwasm/COMMAND.COM", "rb");
-    if (command == nullptr) {
-        perror("command.com");
+    int addr = vm.cpu->sregs.ds.base;
+
+    auto command_com = vm.floppy->read("COMMAND ", "COM");
+    if (!command_com) {
+        fprintf(stderr, "unable to read COMMAND.COM");
         exit(1);
     }
-    int addr = vm.cpu->sregs.ds.base;
-    memset(vm.full_mem + addr + 0x100, 0xff, 64 * 1024);
-    fread(vm.full_mem + addr + 0x100, 1, 64 * 1024, command);
-    fclose(command);
-
-    vm.floppy->read(nullptr, 512, "xx");
+    memcpy(vm.full_mem + addr + 0x100, command_com->data(), command_com->size());
 
     set_seg(vm.cpu->sregs.es, vm.cpu->sregs.ds.selector);
     set_seg(vm.cpu->sregs.ss, vm.cpu->sregs.ds.selector);
