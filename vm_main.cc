@@ -31,11 +31,6 @@ bool debug = false;
 uint16_t dos21_seg = 0;
 uint16_t dos21_offset = 0;
 std::optional<char> key_queue;
-static const int dos_io_seg = 0x60;
-static const int INITTAB = 16 * 3;
-static const int DRVPARAM = 16 * 3 + 8;
-static const int DOS_IO_SIZE = 128;
-static const int dosseg = dos_io_seg + DOS_IO_SIZE / 16;
 std::map<int, std::string> dos_map;
 
 int main(int argc, char **argv) {

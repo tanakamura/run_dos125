@@ -1,0 +1,7 @@
+*.OBJ
+*.COM
+*.SYS
+floppy
+COMMAND.ASM
+*.EXE
+*.BIN

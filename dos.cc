@@ -198,7 +198,7 @@ void handle_dos_system_call(VM *vm, const ExitReason *r) {
                     vm->cpu->regs.rax = 0;
                     break;
                 default:
-                    printf("unknown 0x25 al=0x%x\n", al);
+                    //printf("unknown 0x25 al=0x%x\n", al);
                     vm->inthandler_set_cf();
                     break;
             }
