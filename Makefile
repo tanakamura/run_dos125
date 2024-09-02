@@ -1,5 +1,7 @@
+LINK.o=g++
 CXXFLAGS=-Wall -O2 -MMD
-vm: floppy.o cpu.o dump.o disasm.o vm_vm.o dos.o vm_bios.o
+vm: floppy.o cpu.o dump.o disasm.o vm_vm.o dos.o vm_bios.o vm_main.o
+	$(LINK.o) -o $@ $^
 
 #ASFLAGS=-32
 #CFLAGS=-m16 -fno-pic -fno-builtin -Os -ffreestanding -

@@ -9,3 +9,4 @@ struct __attribute__((__packed__)) dos_bpb {
     uint16_t num_root_entries;
     uint16_t total_sectors;
 };
+

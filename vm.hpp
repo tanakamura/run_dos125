@@ -28,6 +28,8 @@ enum class ExitCode {
     HLT_BIOS_CALL,
     HLT_DOS_DRIVER,
     HLT_INVOKE_RETURN,  // from f000:0200
+    HLT_DOS_INT,        // int21
+    HLT_DOS_EXIT,       // int20
     SINGLE_STEP,
 };
 struct ExitReason {
@@ -36,9 +38,11 @@ struct ExitReason {
     int dos_driver_call;
 };
 enum class RUN_MODE {
-    DOS,                        // install dos kernel & start dos
-    MBR,                        // 0000:7c00
-    NATIVE                      // FFFFFFF0
+    DOS_KERNEL,  // install dos kernel & start dos
+    DOS_EXE,     // load exe & run
+    DOS_COM,     // load com & run
+    MBR,         // 0000:7c00
+    NATIVE       // FFFFFFF0
 };
 
 struct CPU {
@@ -85,7 +89,6 @@ inline void set_seg(struct kvm_segment &sreg, uintptr_t sel_val) {
     sreg.db = 0;
     sreg.l = 0;
 }
-
 
 struct VM {
     int kvm_fd;
@@ -164,15 +167,17 @@ struct VM {
     void set_floppy(const std::string &image_path);
 };
 
-void setup_vmbios(VM *vm);
+void setup_ivt(VM *vm);
 
 void dump_regs(const CPU *cpu);
 void dump_ivt(const VM *vm);
 
 void handle_bios_call(VM *vm, const ExitReason *r);
 void handle_dos_driver_call(VM *vm, const ExitReason *r);
+void handle_dos_system_call(VM *vm, const ExitReason *r);
 void install_dos_driver(VM *vm);
 void disasm(const VM *vm);
 void invoke_intr(VM *vm, int intr_nr);
 void run_with_handler(VM *vm);
 ExitReason run(VM *vm, bool single_step);
+int load_mz(VM *vm, const std::string &path, const std::string &argv);

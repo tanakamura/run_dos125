@@ -1,7 +1,7 @@
 #include "dosdriver.h"
 #include "vm.hpp"
 
-void setup_vmbios(VM *vm) {
+void setup_ivt(VM *vm) {
     size_t num_int = 256;
     auto full_mem = vm->full_mem;
 

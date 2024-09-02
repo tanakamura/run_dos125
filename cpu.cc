@@ -4,17 +4,17 @@ void CPU::setup(const AddrConfig &config, RUN_MODE mode) {
     struct kvm_sregs &sregs = this->sregs;
     struct kvm_regs &regs = this->regs;
 
-    if (mode == RUN_MODE::DOS) {
+    if (mode == RUN_MODE::DOS_KERNEL) {
         regs.rip = 0;
         regs.rsp = 0x8000 - 4;
-        regs.rdx = 1024 * 256 / 64;      // number of 64byte paragraphs of mem
+        regs.rdx = 1024 * 640 / 64;      // number of 64byte paragraphs of mem
         regs.rsi = config.drv_init_tab;  // inittab
     } else {
         regs.rip = 0x7c00;
         regs.rsp = 0x8000;
     }
 
-    if (mode == RUN_MODE::DOS) {
+    if (mode == RUN_MODE::DOS_KERNEL) {
         /* start from dos_seg:0000 */
 
         set_seg(sregs.cs, config.dos_seg);
@@ -40,11 +40,15 @@ static void handle_exit_hlt(const AddrConfig &config, CPU *cpu,
         int intr_nr = rip - 1;
         if (intr_nr == INVOKE_SYSTEM_RET_ADDR) {
             ret->code = ExitCode::HLT_INVOKE_RETURN;
+        } else if (intr_nr == 0x21) {
+            ret->code = ExitCode::HLT_DOS_INT;
+        } else if (intr_nr == 0x20) {
+            ret->code = ExitCode::HLT_DOS_EXIT;
         } else {
             ret->code = ExitCode::HLT_BIOS_CALL;
             ret->bios_nr = intr_nr;
         }
-    } else if (sregs.cs.base == config.dos_io_seg*16) {
+    } else if (sregs.cs.base == config.dos_io_seg * 16) {
         ret->code = ExitCode::HLT_DOS_DRIVER;
         ret->dos_driver_call = (regs.rip - 1) / 3;
     } else {
@@ -65,7 +69,7 @@ ExitReason run(VM *vm, bool single_step) {
         ioctl(vm->cpu->vcpu_fd, KVM_SET_GUEST_DEBUG, &single_step);
         disasm(vm);
     }
-    int r= ioctl(vm->cpu->vcpu_fd, KVM_RUN, NULL);
+    int r = ioctl(vm->cpu->vcpu_fd, KVM_RUN, NULL);
     if (r < 0) {
         perror("kvm run");
         exit(1);
@@ -124,6 +128,12 @@ void run_with_handler(VM *vm) {
         switch (r.code) {
             case ExitCode::HLT_BIOS_CALL:
                 handle_bios_call(vm, &r);
+                break;
+            case ExitCode::HLT_DOS_INT:
+                handle_dos_system_call(vm, &r);
+                break;
+            case ExitCode::HLT_DOS_EXIT:
+                exit(0);
                 break;
             case ExitCode::HLT_DOS_DRIVER:
                 handle_dos_driver_call(vm, &r);
