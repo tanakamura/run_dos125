@@ -22,3 +22,6 @@ floppy:MSDOS.SYS COMMAND.COM
 	fallocate -l 327680  $@ 
 	mkfs.fat -F 12 $@
 	mcopy -i floppy $^ ::/
+
+clean:
+	-rm -f floppy *.COM *.BIN *.EXE *.OBJ COMMAND.ASM MSDOS.SYS 
