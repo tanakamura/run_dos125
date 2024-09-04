@@ -18,10 +18,11 @@ COMMAND.ASM: COMMAND_ORIG.ASM
 	cp $< $@
 
 floppy:MSDOS.SYS COMMAND.COM
-	rm -f $@
-	fallocate -l 327680  $@ 
-	mkfs.fat -F 12 $@
-	mcopy -i floppy $^ ::/
+	rm -f $@ $@.tmp
+	fallocate -l 327680  $@.tmp
+	mkfs.fat -F 12 $@.tmp
+	mcopy -i $@.tmp $^ ::/
+	mv $@.tmp $@
 
 clean:
 	-rm -f floppy *.COM *.BIN *.EXE *.OBJ COMMAND.ASM MSDOS.SYS 
