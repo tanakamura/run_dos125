@@ -139,6 +139,7 @@ std::optional<std::vector<uint8_t>> Floppy::read(const std::string &filename,
             break;
         }
         if (d->name[0] == 0xe5) {
+            d++;
             continue;
         }
 

@@ -1,10 +1,8 @@
 #include <elf.h>
 #include <fcntl.h>
 #include <getopt.h>
-#include <hugetlbfs.h>
 #include <limits.h>
 #include <linux/kvm.h>
-#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,16 +13,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <fstream>
 #include <map>
-#include <mutex>
 #include <optional>
-#include <queue>
-#include <sstream>
 #include <string>
-#include <thread>
 
-#include "dosdriver.h"
 #include "vm.hpp"
 
 bool debug = false;
